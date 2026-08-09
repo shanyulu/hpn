@@ -27,6 +27,19 @@ def message_bucket(row: dict[str, object]) -> str:
     return "large_>=16MiB"
 
 
+def is_multi_rank_completion(record: dict[str, object]) -> bool:
+    """Return whether a record is eligible for a completion-time aggregate."""
+    try:
+        return (
+            record.get("status") == "measured"
+            and record.get("execution_scope") == "multi_rank"
+            and record.get("completion_time_evidence") == "GPU_event_max_rank_completion"
+            and int(record.get("world_size", 0)) > 1
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def merge(records: list[dict[str, object]]) -> list[dict[str, object]]:
     grouped: dict[tuple[object, object], list[dict[str, object]]] = defaultdict(list)
     for record in records:
@@ -43,6 +56,12 @@ def merge(records: list[dict[str, object]]) -> list[dict[str, object]]:
                 "reason": "; ".join(str(item.get("reason", "unknown")) for item in blocked),
             })
             continue
+        invalid = [item for item in group if not is_multi_rank_completion(item)]
+        if invalid:
+            raise ValueError(
+                f"{_case_id}/{_mode}: only multi-rank GPU_event_max_rank_completion "
+                "records can be merged"
+            )
         samples = [float(v) for item in group for v in item.get("critical_path_samples_ms", [])]
         if not samples:
             raise ValueError(f"{_case_id}/{_mode}: no raw critical-path samples")
@@ -50,11 +69,11 @@ def merge(records: list[dict[str, object]]) -> list[dict[str, object]]:
         row.update({
             "independent_launches": len(group),
             "message_bucket": message_bucket(row),
-            "median_ms": statistics.median(samples),
-            "p95_ms": percentile(samples, 0.95),
-            "min_ms": min(samples),
-            "max_ms": max(samples),
-            "stddev_ms": statistics.pstdev(samples),
+            "measured_combine_completion_median_ms": statistics.median(samples),
+            "measured_combine_completion_p95_ms": percentile(samples, 0.95),
+            "measured_combine_completion_min_ms": min(samples),
+            "measured_combine_completion_max_ms": max(samples),
+            "measured_combine_completion_stddev_ms": statistics.pstdev(samples),
             "total_measurement_samples": len(samples),
         })
         row.pop("critical_path_samples_ms", None)

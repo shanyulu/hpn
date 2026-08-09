@@ -8,6 +8,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from precision import error_metrics, fp32_full_return_reference
+from merge_measurements import merge
 from report import decision_rows
 from routing import build_case, rank_duplicate_ratio
 from traffic import analytical_traffic
@@ -52,13 +53,31 @@ def test_precision_metrics_guard_near_zero() -> None:
 
 def test_decision_requires_measured_critical_path_latency() -> None:
     rows = [
-        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "B", "latency_evidence": "not_run", "median_ms": ""},
-        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "C", "latency_evidence": "GPU_event_max_rank_completion", "median_ms": "1.2"},
-        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "B", "latency_evidence": "GPU_event_max_rank_completion", "median_ms": "0.9"},
+        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "A", "world_size": "1", "completion_time_evidence": "GPU_event_max_rank_completion", "measured_combine_completion_median_ms": "0.1"},
+        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "C", "world_size": "4", "completion_time_evidence": "GPU_event_max_rank_completion", "measured_combine_completion_median_ms": "1.2"},
+        {"duplicate_bucket": "high", "message_bucket": "medium", "mode": "B", "world_size": "4", "completion_time_evidence": "GPU_event_max_rank_completion", "measured_combine_completion_median_ms": "0.9"},
     ]
     decisions = decision_rows(rows)
     assert len(decisions) == 1
     assert decisions[0]["recommended_mode"] == "B"
+
+
+def test_merge_rejects_one_rank_cuda_event_records() -> None:
+    record = {
+        "case_id": "one-rank",
+        "mode": "A",
+        "status": "measured",
+        "execution_scope": "one_rank",
+        "completion_time_evidence": "one_rank_cuda_event_not_multi_rank",
+        "world_size": 1,
+        "critical_path_samples_ms": [0.1],
+    }
+    try:
+        merge([record])
+    except ValueError as exc:
+        assert "only multi-rank" in str(exc)
+    else:
+        raise AssertionError("one-rank event record was accepted for aggregation")
 
 
 if __name__ == "__main__":

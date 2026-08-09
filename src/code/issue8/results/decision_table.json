@@ -1,1 +1,29 @@
-[]
+{
+  "measured_multi_rank": [],
+  "source_derived": [
+    {
+      "basis": "direct non-expanded source path; this is not a measured latency recommendation",
+      "duplicate_bucket": "zero",
+      "evidence": "source_derived_and_L1_analytical",
+      "message_bucket": "any",
+      "precision_requirement": "no host-validated latency threshold",
+      "recommended_mode": "A"
+    },
+    {
+      "basis": "merges destination-rank collisions before return; no multi-rank latency validation",
+      "duplicate_bucket": "nonzero; expanded layout required",
+      "evidence": "source_derived_and_L1_analytical",
+      "message_bucket": "any",
+      "precision_requirement": "logical return-payload priority",
+      "recommended_mode": "B"
+    },
+    {
+      "basis": "all valid top-k slots reach the epilogue; no host-validated precision or latency ranking",
+      "duplicate_bucket": "any",
+      "evidence": "source_derived",
+      "message_bucket": "any",
+      "precision_requirement": "independent replica return semantics required",
+      "recommended_mode": "C"
+    }
+  ]
+}

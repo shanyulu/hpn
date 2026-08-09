@@ -1,0 +1,57 @@
+{
+  "case": {
+    "case_id": "s20260809-t32-h256-k2-e8-w1-dupmax",
+    "dtype": "bf16",
+    "duplicate_bucket": "max",
+    "expert_duplicate_ratio": 0.0,
+    "hidden": 256,
+    "num_experts": 8,
+    "num_tokens": 32,
+    "rank_duplicate_ratio": 0.5,
+    "seed": 20260809,
+    "topk": 2,
+    "world_size": 1
+  },
+  "completion_time_evidence": "unavailable_for_multi_rank",
+  "evidence_classification": "measured_one_rank_execution",
+  "execution_scope": "one_rank",
+  "modes": [
+    {
+      "inf_count": 0,
+      "max_abs_error": 0.00390625,
+      "max_relative_error": 0.0038910505827516317,
+      "mean_abs_error": 0.0008161601144820452,
+      "mismatch_count": 3183,
+      "mode": "A",
+      "nan_count": 0,
+      "precision_evidence": "FP32_full_return_deterministic_reduction_after_BF16_input",
+      "relative_l2_error": 0.001704840688034892,
+      "rmse": 0.0015243494417518377
+    },
+    {
+      "inf_count": 0,
+      "max_abs_error": 0.00390625,
+      "max_relative_error": 0.0038910505827516317,
+      "mean_abs_error": 0.0008161601144820452,
+      "mismatch_count": 3183,
+      "mode": "B",
+      "nan_count": 0,
+      "precision_evidence": "FP32_full_return_deterministic_reduction_after_BF16_input",
+      "relative_l2_error": 0.001704840688034892,
+      "rmse": 0.0015243494417518377
+    },
+    {
+      "inf_count": 0,
+      "max_abs_error": 0.00390625,
+      "max_relative_error": 0.0038910505827516317,
+      "mean_abs_error": 0.0008161601144820452,
+      "mismatch_count": 3183,
+      "mode": "C",
+      "nan_count": 0,
+      "precision_evidence": "FP32_full_return_deterministic_reduction_after_BF16_input",
+      "relative_l2_error": 0.001704840688034892,
+      "rmse": 0.0015243494417518377
+    }
+  ],
+  "note": "Compact summary of executed one-rank ElasticBuffer paths. It excludes CUDA Event values because they are not multi-rank combine completion time. Logical return-payload accounting remains in summary.csv and summary.json as L1 analytical evidence."
+}

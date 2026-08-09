@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run one real DeepEP V2 combine mode under ``torchrun``.
+"""Run one DeepEP V2 combine mode under native DeepEP multiprocessing.
 
-The program deliberately has no synthetic latency fallback. A result receives
-``GPU_event_max_rank_completion`` only after the DeepEP combine call completes
-on every rank. Unsupported NCCL Gin or topology configurations write a blocked
-JSON record instead of a number.
+The program deliberately has no synthetic latency fallback. A multi-rank result
+receives ``GPU_event_max_rank_completion`` only after combine completes on every
+rank. One-rank CUDA Event values are explicitly marked as non-multi-rank.
+Unsupported configurations write a blocked JSON record instead of a number.
 """
 
 from __future__ import annotations
@@ -190,15 +190,19 @@ def _run(args: argparse.Namespace, rank: int, world_size: int, group: object) ->
             "dtype": "bf16",
             "deep_ep_version": getattr(deep_ep, "__version__", "unknown"),
             **traffic.as_dict(),
-            "latency_evidence": "GPU_event_max_rank_completion",
+            "execution_scope": "multi_rank" if world_size > 1 else "one_rank",
+            "completion_time_evidence": (
+                "GPU_event_max_rank_completion" if world_size > 1
+                else "one_rank_cuda_event_not_multi_rank"
+            ),
             "timing_definition": "per-iteration max of all rank CUDA Event completion durations",
             "warmup_iterations": args.warmup,
             "measurement_iterations": args.iterations,
-            "median_ms": statistics.median(critical_path_ms),
-            "p95_ms": _percentile(critical_path_ms, 0.95),
-            "min_ms": min(critical_path_ms),
-            "max_ms": max(critical_path_ms),
-            "stddev_ms": statistics.pstdev(critical_path_ms),
+            "measured_combine_completion_median_ms": statistics.median(critical_path_ms),
+            "measured_combine_completion_p95_ms": _percentile(critical_path_ms, 0.95),
+            "measured_combine_completion_min_ms": min(critical_path_ms),
+            "measured_combine_completion_max_ms": max(critical_path_ms),
+            "measured_combine_completion_stddev_ms": statistics.pstdev(critical_path_ms),
             "critical_path_samples_ms": critical_path_ms,
             "precision_evidence": "FP32_full_return_deterministic_reduction_after_BF16_input",
             **precision.as_dict(),

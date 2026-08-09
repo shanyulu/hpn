@@ -1,4 +1,4 @@
-"""Generate a conservative decision table from recorded results."""
+"""Generate an evidence-classified Issue8 decision table."""
 
 from __future__ import annotations
 
@@ -16,25 +16,31 @@ def load_rows(path: Path) -> list[dict[str, str]]:
 
 def _float(row: dict[str, str], key: str) -> float | None:
     value = row.get(key, "")
-    return float(value) if value not in {"", "null", "None"} else None
+    return float(value) if value not in {"", "N/A", "null", "None", "unavailable"} else None
+
+
+def _is_multi_rank_measurement(row: dict[str, str]) -> bool:
+    try:
+        return (
+            row.get("completion_time_evidence") == "GPU_event_max_rank_completion"
+            and int(row.get("world_size", "0")) > 1
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def decision_rows(
     rows: Iterable[dict[str, str]], precision_thresholds: tuple[float | None, ...] = (None,)
 ) -> list[dict[str, str]]:
-    """Return data-backed recommendations only when measured data exists.
-
-    This intentionally refuses to manufacture latency thresholds from logical
-    traffic estimates. A hardware-supported sweep fills the table later.
-    """
+    """Produce latency recommendations only from real multi-rank samples."""
     groups: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        if row.get("latency_evidence") == "GPU_event_max_rank_completion":
+        if _is_multi_rank_measurement(row):
             groups[(row["duplicate_bucket"], row["message_bucket"])].append(row)
 
     result = []
     for (dup, message), group in sorted(groups.items()):
-        valid = [r for r in group if _float(r, "median_ms") is not None]
+        valid = [r for r in group if _float(r, "measured_combine_completion_median_ms") is not None]
         if not valid:
             continue
         for threshold in precision_thresholds:
@@ -49,13 +55,17 @@ def decision_rows(
                 ]
                 label = f"max_abs_error<={threshold:g}"
             if eligible:
-                best = min(eligible, key=lambda r: _float(r, "median_ms") or float("inf"))
-                basis = "minimum measured max-rank median completion time among precision-eligible modes"
+                best = min(
+                    eligible,
+                    key=lambda r: _float(r, "measured_combine_completion_median_ms") or float("inf"),
+                )
+                basis = "measured multi-rank max-rank completion time among precision-eligible modes"
             else:
                 best = min(valid, key=lambda r: _float(r, "max_abs_error") or float("inf"))
-                basis = "no measured mode met the error limit; minimum measured max_abs_error selected"
+                basis = "no mode met the error limit; minimum measured max_abs_error selected"
             result.append(
                 {
+                    "evidence": "measured_multi_rank",
                     "duplicate_bucket": dup,
                     "message_bucket": message,
                     "precision_requirement": label,
@@ -66,30 +76,59 @@ def decision_rows(
     return result
 
 
+def source_derived_rows() -> list[dict[str, str]]:
+    """Guidance that deliberately makes no completion-time claim."""
+    return [
+        {
+            "evidence": "source_derived_and_L1_analytical",
+            "duplicate_bucket": "zero",
+            "message_bucket": "any",
+            "precision_requirement": "no host-validated latency threshold",
+            "recommended_mode": "A",
+            "basis": "direct non-expanded source path; this is not a measured latency recommendation",
+        },
+        {
+            "evidence": "source_derived_and_L1_analytical",
+            "duplicate_bucket": "nonzero; expanded layout required",
+            "message_bucket": "any",
+            "precision_requirement": "logical return-payload priority",
+            "recommended_mode": "B",
+            "basis": "merges destination-rank collisions before return; no multi-rank latency validation",
+        },
+        {
+            "evidence": "source_derived",
+            "duplicate_bucket": "any",
+            "message_bucket": "any",
+            "precision_requirement": "independent replica return semantics required",
+            "recommended_mode": "C",
+            "basis": "all valid top-k slots reach the epilogue; no host-validated precision or latency ranking",
+        },
+    ]
+
+
 def write_report(summary_csv: Path, output_dir: Path) -> Path:
-    rows = load_rows(summary_csv)
-    decisions = decision_rows(rows, precision_thresholds=(1e-3, 1e-2, None))
+    measured = decision_rows(load_rows(summary_csv), precision_thresholds=(1e-3, 1e-2, None))
+    source_derived = source_derived_rows()
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / "decision_table.md"
     lines = [
         "# Decision Table",
         "",
-        "Only rows with `GPU_event_max_rank_completion` latency are allowed to produce a recommendation.",
-        "Logical payload estimates are never promoted to measured latency.",
+        "The tested host has no measured multi-rank DeepEP V2 combine completion time.",
+        "No completion-time threshold or latency advantage is inferred below.",
         "",
-        "| Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |",
-        "| --- | --- | --- | --- | --- |",
+        "| Evidence | Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
-    if decisions:
-        for row in decisions:
-            lines.append(
-                "| {duplicate_bucket} | {message_bucket} | {precision_requirement} | "
-                "{recommended_mode} | {basis} |".format(**row)
-            )
-    else:
-        lines.append("| pending | pending | pending | pending | No supported multi-rank measurement is present. |")
+    for row in source_derived + measured:
+        lines.append(
+            "| {evidence} | {duplicate_bucket} | {message_bucket} | {precision_requirement} | "
+            "{recommended_mode} | {basis} |".format(**row)
+        )
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
     (output_dir / "decision_table.json").write_text(
-        json.dumps(decisions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps({"source_derived": source_derived, "measured_multi_rank": measured}, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
     )
     return output

@@ -1,8 +1,10 @@
 # Decision Table
 
-Only rows with `GPU_event_max_rank_completion` latency are allowed to produce a recommendation.
-Logical payload estimates are never promoted to measured latency.
+The tested host has no measured multi-rank DeepEP V2 combine completion time.
+No completion-time threshold or latency advantage is inferred below.
 
-| Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |
-| --- | --- | --- | --- | --- |
-| pending | pending | pending | pending | No supported multi-rank measurement is present. |
+| Evidence | Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |
+| --- | --- | --- | --- | --- | --- |
+| source_derived_and_L1_analytical | zero | any | no host-validated latency threshold | A | direct non-expanded source path; this is not a measured latency recommendation |
+| source_derived_and_L1_analytical | nonzero; expanded layout required | any | logical return-payload priority | B | merges destination-rank collisions before return; no multi-rank latency validation |
+| source_derived | any | any | independent replica return semantics required | C | all valid top-k slots reach the epilogue; no host-validated precision or latency ranking |

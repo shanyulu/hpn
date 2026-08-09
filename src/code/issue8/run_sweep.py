@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a reproducible Issue8 matrix and launch real DeepEP runs when enabled."""
+"""Create the deterministic analytical Issue8 matrix."""
 
 from __future__ import annotations
 
@@ -51,12 +51,13 @@ def make_rows(args: argparse.Namespace) -> list[dict[str, object]]:
                         "dtype": args.dtype,
                         "message_bucket": message_bucket(tokens, hidden, args.dtype),
                         **traffic.as_dict(),
-                        "latency_evidence": "not_run",
-                        "median_ms": "",
-                        "p95_ms": "",
-                        "precision_evidence": "not_run",
-                        "max_abs_error": "",
-                        "relative_l2_error": "",
+                        "evidence_classification": "analytical",
+                        "completion_time_evidence": "unavailable_on_tested_host",
+                        "measured_combine_completion_median_ms": None,
+                        "measured_combine_completion_p95_ms": None,
+                        "precision_evidence": "unavailable_in_analytical_matrix",
+                        "max_abs_error": None,
+                        "relative_l2_error": None,
                         "status": "analytical_only",
                     }
                 )
@@ -68,7 +69,8 @@ def write_csv(rows: list[dict[str, object]], path: Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow({key: "N/A" if value is None else value for key, value in row.items()})
 
 
 def main() -> int:
@@ -97,8 +99,8 @@ def main() -> int:
     )
     if not args.analytical_only:
         print(
-            "Matrix written with no measured latency. Launch benchmark.py with torchrun "
-            "on a DeepEP V2-supported NCCL Gin topology to replace each row.",
+            "Matrix contains no measured completion time. Use benchmark.py only on a "
+            "host where the real multi-rank DeepEP path completes.",
             file=sys.stderr,
         )
     from report import write_report

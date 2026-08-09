@@ -2,128 +2,115 @@
 
 ## What
 
-This submission compares the three real DeepEP V2 combine configurations:
+This submission maps and compares three DeepEP V2 combine configurations.
 
-| Mode | Configuration | Reduction location |
+| Mode | Configuration | Source-derived reduction path |
 | --- | --- | --- |
-| A | `do_expand=False` | direct return followed by the standard epilogue |
-| B | `do_expand=True`, `allow_multiple_reduction=True` | mergeable replicas reduced in the combine kernel |
-| C | `do_expand=True`, `allow_multiple_reduction=False` | each replica returns independently; epilogue reduces all slots |
+| A | `do_expand=False` | direct return path, then standard epilogue |
+| B | `do_expand=True`, `allow_multiple_reduction=True` | mergeable replicas reduce in the combine kernel |
+| C | `do_expand=True`, `allow_multiple_reduction=False` | replicas return independently; epilogue reduces all slots |
 
-The exact source-level mapping is in [docs/source_map.md](docs/source_map.md).
+The source proof is in [docs/source_map.md](docs/source_map.md).
 
-## Why
+## Evidence
 
-Mode B can shrink the return payload when multiple top-k selections target the
-same destination rank, but adds a local floating-point reduction. Mode C keeps
-those replicas separate until the epilogue, changing both traffic and rounding.
-The relevant routing variable is destination-rank duplication, not merely
-duplicate expert ids.
+### Measured
 
-## Current Evidence Status
+- DeepEP main `01dc3aaac82068020353dce2c302e38153c0bfaa` built against and loaded NCCL 2.30.4.
+- A, B, and C each executed through the one-rank `ElasticBuffer.dispatch` /
+  `ElasticBuffer.combine` paths.
+- [results/one_rank_execution.json](results/one_rank_execution.json) records
+  the same-input executed BF16 precision summary: all three paths had
+  `max_abs_error=0.00390625`, `relative_l2_error=0.001704840688034892`, and no
+  NaN or Inf for the recorded case. One-rank execution is not presented as
+  multi-rank communication evidence.
 
-The committed `results/summary.csv` contains 45 deterministic same-input cases
-and **L1 analytical logical payload bytes only**. It contains no measured
-latency or hardware traffic claim.
+### Analytical
 
-Development validation built DeepEP commit
-`01dc3aaac82068020353dce2c302e38153c0bfaa` and passed its one-rank elastic
-smoke test. The available four-GPU H800 PCIe host has P2P enabled but no NVLink
-edges. DeepEP V2 multi-rank initialization fails because NCCL Gin is
-unavailable; disabling Gin then hangs. Consequently this checkout cannot
-honestly provide four-rank DeepEP completion timings. The real benchmark writes
-`status: blocked` rather than a latency number on that failure.
+- `results/summary.csv` and `results/summary.json` contain 45 deterministic
+  same-input cases with L1 logical return-payload accounting only.
+- L1 is source-derived logical payload bytes. It excludes protocol overhead and
+  is not a hardware traffic counter or bandwidth measurement.
+- No analytical or theoretical latency is emitted by this submission.
 
-This is an environmental blocker, not an estimate. A supported Hopper/NVLink or
-properly configured NCCL Gin environment is required to fill the measured rows.
+### Unavailable
 
-## Measurement Method
+Multi-rank DeepEP V2 combine completion latency is reported as `N/A` on the
+tested 4 x H800 PCIe host. The environment was audited against Gin, the
+`EP_DISABLE_GIN=1` fallback, and the upstream `hybrid-ep` PCIe path. None
+provided a semantically valid executable multi-rank A/B/C combine path. No
+modeled latency is substituted for measured latency.
 
-`benchmark.py` calls `ElasticBuffer.dispatch` and `ElasticBuffer.combine`; it
-does not model the kernel in Python. It uses a fixed seed and reuses a single
-routing case per A/B/C comparison. The benchmark uses unit top-k weights because
-current upstream expanded-send asserts `topk_weights == nullptr`; see the source
-map for the required weighted extension.
+[docs/feasibility.md](docs/feasibility.md) contains the concise 2-rank/4-rank
+blocker evidence and provenance.
 
-For a successful multi-rank run it records:
+## Method
 
-- L1 logical return payload bytes, separately labeled from transport counters.
-- CUDA Event completion duration after warmup, using the maximum duration across
-  ranks as each iteration's distributed critical path; median, p95, min, max,
-  and standard deviation are reported.
-- Error against a deterministic FP32 full-return reduction after BF16 input
-  quantization: max/mean absolute error, RMSE, relative L2, guarded maximum
-  relative error, mismatch count, NaNs, and Infs.
+`routing.build_case` makes one fixed-seed activation/routing case. All A/B/C
+runs reuse it; only DeepEP layout and reduction flags change. The decision
+variable is destination-rank duplication, not merely repeated expert IDs:
 
-Details and limitations are in [docs/methodology.md](docs/methodology.md).
+`rank_duplicate_ratio = 1 - mean_t(|unique(topk_idx[t] // experts_per_rank)| / K)`.
+
+When a valid multi-rank path completes, `benchmark.py` uses CUDA Events after
+warmup and records the maximum rank completion duration per iteration only after
+all ranks complete. It intentionally does not fall back to a Python or
+closed-form latency estimate. The expanded-send test uses unit top-k weights
+because current upstream Mode C asserts null `topk_weights`; see the source map
+for the boundary.
+
+Full methodology: [docs/methodology.md](docs/methodology.md).
+
+## Results And Decision
+
+[results/decision_table.md](results/decision_table.md) separates source-derived
+payload guidance from completion-time selection. It has no multi-rank latency
+threshold on this host. In particular, no recommendation in this checkout
+claims a measured latency advantage.
 
 ## Reproduce
 
-The scripts have no checkout-specific paths. Install/build the upstream DeepEP
-matching the source map, make it importable, then run from this directory.
+From this directory, with a matching upstream DeepEP installation available to
+Python:
 
 ```bash
 python run_sweep.py --analytical-only --output-dir results
 python tests/test_issue8.py
 ```
 
-On a supported four-rank DeepEP V2 topology, run each mode as an independent
-process launch. DeepEP's upstream `init_dist` owns its multiprocessing contract,
-so invoke this script directly rather than through `torchrun`. Repeat every
-command at least three times with distinct output files before merging the
-results into a decision table.
+On a different host where all three modes complete across ranks, use three
+independent native DeepEP process launches per mode, then merge their raw
+critical-path samples:
 
 ```bash
 for run in 1 2 3; do
-  python benchmark.py --num-processes 4 \
-    --mode A --output results/measured-a-run${run}.json
-  python benchmark.py --num-processes 4 \
-    --mode B --output results/measured-b-run${run}.json
-  python benchmark.py --num-processes 4 \
-    --mode C --output results/measured-c-run${run}.json
+  python benchmark.py --num-processes 4 --mode A --output results/a-${run}.json
+  python benchmark.py --num-processes 4 --mode B --output results/b-${run}.json
+  python benchmark.py --num-processes 4 --mode C --output results/c-${run}.json
 done
-python merge_measurements.py --inputs \
-  results/measured-a-run1.json results/measured-a-run2.json results/measured-a-run3.json \
-  results/measured-b-run1.json results/measured-b-run2.json results/measured-b-run3.json \
-  results/measured-c-run1.json results/measured-c-run2.json results/measured-c-run3.json \
+python merge_measurements.py --inputs results/a-*.json results/b-*.json results/c-*.json \
   --output results/measured_summary.csv
 ```
 
-`merge_measurements.py` requires the raw per-iteration critical-path samples
-from each independent launch, recomputes aggregate statistics, and regenerates
-the decision table. It only makes recommendations among modes that satisfy the
-recorded maximum-absolute-error limits.
+Only records with `GPU_event_max_rank_completion` evidence are eligible for a
+measured completion-time recommendation.
 
-## Decision Table
+## Provenance
 
-[results/decision_table.md](results/decision_table.md) intentionally remains
-pending until a supported multi-rank sweep writes actual critical-path samples.
-`report.py` rejects non-measured rows as a source of recommendations, so it
-cannot manufacture duplicate-rate or message-size thresholds from byte formulas.
-
-## Environment Recorded During Development
-
-| Component | Value |
+| Item | Value |
 | --- | --- |
-| GPU | 4 x NVIDIA H800 PCIe, SM90 |
-| GPU topology | GPU0-GPU1 and GPU2-GPU3 PIX; cross-pair NODE; no NVLink |
-| Driver | 595.71.05 |
-| CUDA toolkit / PyTorch CUDA | 12.8 / 12.8 |
-| PyTorch | 2.8.0+cu128 |
+| hpn base | `fcb16fe5a2942da749543b0e206707c7f3faba54` |
 | DeepEP | `01dc3aaac82068020353dce2c302e38153c0bfaa` |
-| NCCL seen by PyTorch | 2.27.3 |
-| Profiler | Nsight Systems and Nsight Compute unavailable |
+| GPU/topology | 4 x NVIDIA H800 PCIe; no NVLink |
+| NVIDIA driver | 595.71.05 |
+| CUDA toolkit / PyTorch CUDA | 12.8.93 / 12.8 |
+| PyTorch | 2.8.0+cu128 |
+| DeepEP NCCL compile/runtime | 2.30.4 / 2.30.4 |
 
-The installed external NCCL package was upgraded to 2.30.4 to build DeepEP, but
-the PyTorch runtime still reports NCCL 2.27.3. This is another reason the host
-is not presented as a validated DeepEP V2 multi-rank target.
+## Limits
 
-## Limitations
-
-- No L3 hardware counter claim is made without Nsight/NCCL/fabric evidence.
-- No PCIe result is labeled NVLink or RDMA.
-- The committed initial matrix is not a latency benchmark and cannot choose a
-  mode by itself.
-- The current implementation covers the unweighted expanded-send path required
-  by upstream's current assertion. Weighted Mode C needs pre-weighted slot data
-  and a dedicated FP32 validation.
+- No L3 hardware traffic counter, PCIe bandwidth, NVLink bandwidth, or RDMA
+  bandwidth is claimed.
+- No 2-rank or 4-rank combine latency is claimed for this host.
+- Weighted Mode C needs pre-weighted slots and a separately validated FP32
+  reference.
