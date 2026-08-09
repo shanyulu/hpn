@@ -25,5 +25,9 @@
       "precision_requirement": "independent replica return semantics required",
       "recommended_mode": "C"
     }
-  ]
+  ],
+  "unresolved_thresholds": {
+    "message_size": "no valid multi-rank crossover measurement on tested host",
+    "precision_requirement": "one-rank precision is not a multi-rank crossover measurement"
+  }
 }

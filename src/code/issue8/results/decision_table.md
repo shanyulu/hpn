@@ -2,6 +2,7 @@
 
 The tested host has no measured multi-rank DeepEP V2 combine completion time.
 No completion-time threshold or latency advantage is inferred below.
+Message-size and precision-requirement crossover thresholds are unresolved; L1 payload bytes and one-rank precision are not extrapolated into them.
 
 | Evidence | Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |
 | --- | --- | --- | --- | --- | --- |

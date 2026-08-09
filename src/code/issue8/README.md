@@ -66,7 +66,9 @@ Full methodology: [docs/methodology.md](docs/methodology.md).
 [results/decision_table.md](results/decision_table.md) separates source-derived
 payload guidance from completion-time selection. It has no multi-rank latency
 threshold on this host. In particular, no recommendation in this checkout
-claims a measured latency advantage.
+claims a measured latency advantage. Message-size and precision-requirement
+crossover thresholds are `unresolved`: neither L1 payload bytes nor one-rank
+precision is used to infer them.
 
 ## Reproduce
 

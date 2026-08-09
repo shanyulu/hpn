@@ -116,6 +116,10 @@ def write_report(summary_csv: Path, output_dir: Path) -> Path:
         "",
         "The tested host has no measured multi-rank DeepEP V2 combine completion time.",
         "No completion-time threshold or latency advantage is inferred below.",
+        (
+            "Message-size and precision-requirement crossover thresholds are unresolved; "
+            "L1 payload bytes and one-rank precision are not extrapolated into them."
+        ),
         "",
         "| Evidence | Duplicate bucket | Message bucket | Precision requirement | Recommended mode | Basis |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -127,7 +131,18 @@ def write_report(summary_csv: Path, output_dir: Path) -> Path:
         )
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
     (output_dir / "decision_table.json").write_text(
-        json.dumps({"source_derived": source_derived, "measured_multi_rank": measured}, indent=2, sort_keys=True)
+        json.dumps(
+            {
+                "measured_multi_rank": measured,
+                "source_derived": source_derived,
+                "unresolved_thresholds": {
+                    "message_size": "no valid multi-rank crossover measurement on tested host",
+                    "precision_requirement": "one-rank precision is not a multi-rank crossover measurement",
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
         + "\n",
         encoding="utf-8",
     )
