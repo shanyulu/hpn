@@ -1,0 +1,134 @@
+{
+  "baseline": [
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.0001220703125,
+      "max_relative_error": 0.008064515888690948,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.000244140625,
+      "max_relative_error": 0.0078125,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.0009765625,
+      "max_relative_error": 0.010526316240429878,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.000244140625,
+      "max_relative_error": 0.008583690971136093,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    }
+  ],
+  "optimized": [
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.0001220703125,
+      "max_relative_error": 0.008064515888690948,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.000244140625,
+      "max_relative_error": 0.0078125,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.0009765625,
+      "max_relative_error": 0.010526316240429878,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    },
+    {
+      "allclose": true,
+      "atol": 0.01,
+      "bitwise": false,
+      "checked": true,
+      "dtype": "torch.bfloat16",
+      "inf_count": 0,
+      "max_abs_error": 0.000244140625,
+      "max_relative_error": 0.008583690971136093,
+      "nan_count": 0,
+      "rtol": 0.015,
+      "shape": [
+        256,
+        4096
+      ]
+    }
+  ]
+}

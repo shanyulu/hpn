@@ -1,0 +1,62 @@
+{
+  "env": {
+    "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+    "FLUX_SM120_LOGICAL_ARCH": "80",
+    "NVSHMEM_HOME": "/root/miniconda3/lib/python3.12/site-packages/nvidia/nvshmem"
+  },
+  "hardware": {
+    "compute_capability": "12.0",
+    "gpu_count": 4,
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "interconnect": "PCIe/NUMA, no NVLink/NVSwitch",
+    "memory_mib": 97887,
+    "p2p_access": [
+      [
+        true,
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true,
+        true
+      ]
+    ]
+  },
+  "raw_artifacts": {
+    "environment_txt": "/root/tencent-hpn-issue6/artifacts/environment/environment.txt",
+    "git_state_txt": "/root/tencent-hpn-issue6/artifacts/environment/git_state.txt",
+    "topology_txt": "/root/tencent-hpn-issue6/artifacts/environment/topology.txt"
+  },
+  "repos": {
+    "cutlass_submodule": "df8a550d83b84c0e594bb5f8f7e761432cd2208d",
+    "flux_head": "19831ca2d820e3e782ed1d15d8b52d0898b78b26",
+    "hpn_head": "fcb16fe5a2942da749543b0e206707c7f3faba54",
+    "nccl_submodule": "8c6c5951e9f5a2b5a1f0eaa65136b99333a60762"
+  },
+  "software": {
+    "cuda_driver": "13.0",
+    "cuda_toolkit": "12.8",
+    "driver": "580.76.05",
+    "nccl": "2.27.3",
+    "nvshmem": "nvidia-nvshmem-cu12 3.7.2",
+    "python": "3.12.3",
+    "pytorch": "2.8.0+cu128",
+    "torch_cuda": "12.8"
+  },
+  "timestamp_utc": "2026-08-09T07:45:00Z"
+}

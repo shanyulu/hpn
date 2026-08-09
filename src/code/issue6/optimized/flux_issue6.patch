@@ -1,0 +1,545 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ed06363..260768b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -51,6 +51,23 @@ endif()
+ set(CMAKE_CUDA_ARCHITECTURES ${CUDAARCHS})
+ message(STATUS "CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}")
+
++# Blackwell (SM120) can build real sm_120 cubins with CUDA 12.8, while Flux's
++# op registry and generator currently group Hopper-family GMMA/TMA kernels under
++# the logical Sm90 key.  Keep code generation on Sm90 when compiling for SM120;
++# the emitted CUDA is still compiled for the requested CMAKE_CUDA_ARCHITECTURES.
++set(GENERATOR_CUDAARCHS "")
++foreach(ARCH ${CMAKE_CUDA_ARCHITECTURES})
++  if(ARCH STREQUAL "120")
++    list(APPEND GENERATOR_CUDAARCHS "80")
++    list(APPEND GENERATOR_CUDAARCHS "90")
++  else()
++    list(APPEND GENERATOR_CUDAARCHS "${ARCH}")
++  endif()
++endforeach()
++list(REMOVE_DUPLICATES GENERATOR_CUDAARCHS)
++list(JOIN GENERATOR_CUDAARCHS ";" GENERATOR_CUDAARCHS)
++message(STATUS "GENERATOR_CUDAARCHS=${GENERATOR_CUDAARCHS}")
++
+ set(SM_CORES "")
+ option(GPU_SM_CORES "Manually specify GPU SM core number (e.g., '108;78'). Overrides auto-detection." "")
+
+@@ -162,6 +179,8 @@ if(BUILD_THS)
+       list(APPEND TORCH_CUDA_ARCH_LIST "8.9")
+     elseif(ARCH STREQUAL "90")
+       list(APPEND TORCH_CUDA_ARCH_LIST "9.0")
++    elseif(ARCH STREQUAL "120")
++      list(APPEND TORCH_CUDA_ARCH_LIST "12.0")
+     else()
+       message(WARNING "Unsupported CUDA arch [${ARCH}] for TORCH_CUDA_ARCH")
+     endif()
+diff --git a/build.sh b/build.sh
+index 2feb4ef..8a378b3 100755
+--- a/build.sh
++++ b/build.sh
+@@ -195,6 +195,10 @@ function build_flux_cuda() {
+ function merge_compile_commands() {
+     cd $SCRIPT_DIR
+     if command -v ninja >/dev/null 2>&1; then
++        if ! ls ./build/temp.*/build.ninja >/dev/null 2>&1; then
++            echo "No torch extension build.ninja found. skip THS compile_commands merge."
++            return 0
++        fi
+         # generate compile_commands.json
+         ninja -f $(ls ./build/temp.*/build.ninja) -t compdb >build/compile_commands_ths_op.json
+         cat >build/merge_compile_commands.py <<EOF
+@@ -224,7 +228,10 @@ function build_flux_py {
+     fi
+     popd
+     ##### build flux torch bindings #####
+-    MAX_JOBS=${JOBS} python3 setup.py develop --user
++    if ! MAX_JOBS=${JOBS} python3 setup.py develop --user; then
++        echo "setup.py develop failed; falling back to build_ext --inplace"
++        MAX_JOBS=${JOBS} python3 setup.py build_ext --inplace
++    fi
+     if [ $BDIST_WHEEL == "ON" ]; then
+         MAX_JOBS=${JOBS} python3 setup.py bdist_wheel
+     fi
+diff --git a/include/flux/ths_op/ths_op.h b/include/flux/ths_op/ths_op.h
+index 9893cff..53c9c79 100644
+--- a/include/flux/ths_op/ths_op.h
++++ b/include/flux/ths_op/ths_op.h
+@@ -95,6 +95,8 @@ class ProfilingContext : public torch::CustomClassHolder {
+
+   PyTuningRecord get_latest_record() const;
+
++  PyTuningRecord get_latest_record_at(int top_index) const;
++
+   // add a single record
+   void add(
+       UnifiedGemmMeta const &meta,
+diff --git a/python/flux/cpp_mod.py b/python/flux/cpp_mod.py
+index b5411c5..3691c81 100644
+--- a/python/flux/cpp_mod.py
++++ b/python/flux/cpp_mod.py
+@@ -63,7 +63,10 @@ def _load_deps():
+     try:
+         _preload_libs("libnvshmem_host.so.3", Path(_nvshmem_home()) / "lib")
+         _preload_libs("nvshmem_bootstrap_uid.so.3", Path(_nvshmem_home()) / "lib")
+-        _preload_libs("nvshmem_transport_ibrc.so.3", Path(_nvshmem_home()) / "lib")
++        try:
++            _preload_libs("nvshmem_transport_ibrc.so.3", Path(_nvshmem_home()) / "lib")
++        except Exception:
++            _preload_libs("nvshmem_transport_ibrc.so.6", Path(_nvshmem_home()) / "lib")
+     except Exception as e:
+         logging.warning("Failed to load NVSHMEM libs")
+     _preload_libs("libflux_cuda.so")
+diff --git a/python/flux/cpp_mod.pyi b/python/flux/cpp_mod.pyi
+index 8daf6ab..3c0c547 100644
+--- a/python/flux/cpp_mod.pyi
++++ b/python/flux/cpp_mod.pyi
+@@ -191,6 +191,7 @@ class ProfilingContext:
+     def get_latest_prof_result(self) -> str: ...
+     def get_all_prof_results(self) -> List[str]: ...
+     def get_latest_record(self) -> TuningRecord: ...
++    def get_latest_record_at(self, top_index: int) -> TuningRecord: ...
+     def get_all_records(self) -> List[TuningRecord]: ...
+
+ class DistEnvTP:
+diff --git a/python/flux/util.py b/python/flux/util.py
+index 8e7271b..acd38e7 100644
+--- a/python/flux/util.py
++++ b/python/flux/util.py
+@@ -18,6 +18,7 @@
+ import gzip
+ import json
+ import logging
++import os
+ import pathlib
+ import shutil
+ import sys
+@@ -32,7 +33,10 @@ def get_arch():
+     properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+     major = properties.major
+     minor = properties.minor
+-    return major * 10 + minor
++    arch = major * 10 + minor
++    if arch == 120:
++        return int(os.getenv("FLUX_SM120_LOGICAL_ARCH", "80"))
++    return arch
+
+
+ def torch_allclose(x, y, rtol, atol, verbose=True):
+diff --git a/src/a2a_transpose_gemm/CMakeLists.txt b/src/a2a_transpose_gemm/CMakeLists.txt
+index ead296f..0b99b36 100644
+--- a/src/a2a_transpose_gemm/CMakeLists.txt
++++ b/src/a2a_transpose_gemm/CMakeLists.txt
+@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.17)
+ set(OP_REGS "")
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_a2a_transpose_gemm "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_a2a_transpose_gemm "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/ag_gemm/CMakeLists.txt b/src/ag_gemm/CMakeLists.txt
+index 87f7416..7dc117a 100644
+--- a/src/ag_gemm/CMakeLists.txt
++++ b/src/ag_gemm/CMakeLists.txt
+@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.17)
+ set(OP_REGS "")
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_ag_gemm "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_ag_gemm "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/comm_none/CMakeLists.txt b/src/comm_none/CMakeLists.txt
+index 9e79ce3..99d58a3 100644
+--- a/src/comm_none/CMakeLists.txt
++++ b/src/comm_none/CMakeLists.txt
+@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.17)
+
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_comm_none "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_comm_none "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/cuda/op_registry.cu b/src/cuda/op_registry.cu
+index 97115a8..13398bd 100644
+--- a/src/cuda/op_registry.cu
++++ b/src/cuda/op_registry.cu
+@@ -36,9 +36,15 @@ init_device_properties() {
+   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, 0);
+   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, 0);
+   int arch_num = major * 10 + minor;
+-  FLUX_CHECK(arch_num == 80 || arch_num == 89 || arch_num == 90)
++  FLUX_CHECK(arch_num == 80 || arch_num == 89 || arch_num == 90 || arch_num == 120)
+       << "unsupported arch: " << arch_num;
+-  arch = ArchEnum{arch_num};
++  int logical_arch_num = arch_num;
++  if (arch_num == 120) {
++    logical_arch_num = get_int_from_env("FLUX_SM120_LOGICAL_ARCH", 80);
++    FLUX_CHECK(logical_arch_num == 80 || logical_arch_num == 89 || logical_arch_num == 90)
++        << "unsupported FLUX_SM120_LOGICAL_ARCH: " << logical_arch_num;
++  }
++  arch = ArchEnum{logical_arch_num};
+
+   int sm_count;
+   cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, 0);
+@@ -48,6 +54,7 @@ init_device_properties() {
+     case 108: sm_core = SMCoreEnum::A100; break;
+     case 78: sm_core = SMCoreEnum::H20; break;
+     case 132: sm_core = SMCoreEnum::H800; break;
++    case 188: sm_core = arch == ArchEnum::Sm90 ? SMCoreEnum::H800 : SMCoreEnum::A100; break;
+     default: FLUX_CHECK(false) << "Unsupported SM count for SMCoreEnum: " << sm_count; break;
+   }
+ }
+diff --git a/src/gemm_a2a_transpose/CMakeLists.txt b/src/gemm_a2a_transpose/CMakeLists.txt
+index 26d73e6..e73475f 100644
+--- a/src/gemm_a2a_transpose/CMakeLists.txt
++++ b/src/gemm_a2a_transpose/CMakeLists.txt
+@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.17)
+ set(OP_REGS "")
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_gemm_a2a_transpose "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_gemm_a2a_transpose "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+@@ -32,4 +32,4 @@ if (BUILD_THS)
+   list(APPEND FLUX_THS_OP_FILES ${THS_FILES})
+   set(FLUX_THS_OP_FILES ${FLUX_THS_OP_FILES} PARENT_SCOPE)
+   flux_add_ths_op_target("gemm_a2a_transpose")
+-endif()
+\ No newline at end of file
++endif()
+diff --git a/src/gemm_rs/CMakeLists.txt b/src/gemm_rs/CMakeLists.txt
+index 2e70396..566a004 100644
+--- a/src/gemm_rs/CMakeLists.txt
++++ b/src/gemm_rs/CMakeLists.txt
+@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.17)
+
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_gemm_rs "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_gemm_rs "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/generator/gen_moe_ag_scatter.cc b/src/generator/gen_moe_ag_scatter.cc
+index 49f6968..743b471 100644
+--- a/src/generator/gen_moe_ag_scatter.cc
++++ b/src/generator/gen_moe_ag_scatter.cc
+@@ -36,7 +36,41 @@ struct GemmGroupedV2AGScatter_Space {
+       cute::make_tuple(_GemmGroupedV2{}),
+       cute::make_tuple(make_gemm_v2_meta(_False{})));
+
+-  static constexpr auto AllGemmHParams_FP16 = make_space_gemm_hparams();
++  // ISSUE6: the default V2 grouped GEMM tile (128x128x32) is too coarse for
++  // small-M MoE AGScatter on TP4.  With the official shape each expert has 64
++  // rows and each source rank contributes about 16 rows, so a 128-row tile waits
++  // for all rank segments before any compute can start.  Keep the original
++  // configuration first, then register smaller M tiles so profiling can select a
++  // finer producer-consumer pipeline without broadening the full search space.
++  static constexpr auto AllGemmHParams_FP16 = cute::make_tuple(
++      make_gemm_hparams(
++          make_gemm_v2_hparams(Shape<_64, _64, _32>{}, Shape<_16, _8, _16>{}, _StreamkSK{}),
++          None{},
++          Shape<_128, _128, _32>{},
++          _GemmStreamK{},
++          cute::_4{},
++          _RasterHeuristic{}),
++      make_gemm_hparams(
++          make_gemm_v2_hparams(Shape<_64, _64, _32>{}, Shape<_16, _8, _16>{}, _StreamkSK{}),
++          None{},
++          Shape<_64, _128, _32>{},
++          _GemmStreamK{},
++          cute::_4{},
++          _RasterAlongN{}),
++      make_gemm_hparams(
++          make_gemm_v2_hparams(Shape<_32, _64, _32>{}, Shape<_16, _8, _16>{}, _StreamkSK{}),
++          None{},
++          Shape<_32, _128, _32>{},
++          _GemmStreamK{},
++          cute::_4{},
++          _RasterAlongN{}),
++      make_gemm_hparams(
++          make_gemm_v2_hparams(Shape<_16, _64, _32>{}, Shape<_16, _8, _16>{}, _StreamkSK{}),
++          None{},
++          Shape<_16, _128, _32>{},
++          _GemmStreamK{},
++          cute::_4{},
++          _RasterAlongN{}));
+
+   static constexpr auto AllGemmMeta_FP8 = make_space_gemm_meta(
+       cute::make_tuple(
+diff --git a/src/moe_ag_scatter/CMakeLists.txt b/src/moe_ag_scatter/CMakeLists.txt
+index bc721f4..0a2945d 100644
+--- a/src/moe_ag_scatter/CMakeLists.txt
++++ b/src/moe_ag_scatter/CMakeLists.txt
+@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.17)
+
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_moe_ag_scatter "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_moe_ag_scatter "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc b/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
+index 4b80333..3d194e7 100644
+--- a/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
++++ b/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
+@@ -44,6 +44,7 @@
+ #include <c10/util/intrusive_ptr.h>
+ #include <c10/util/Logging.h>
+ #include <c10/util/Optional.h>
++#include <nvtx3/nvToolsExt.h>
+ #include <torch/csrc/distributed/c10d/ProcessGroup.hpp>
+ #include <utility>
+ #include <torch/cuda.h>
+@@ -53,6 +54,11 @@
+ #endif
+
+ namespace {
++struct NvtxRange {
++  explicit NvtxRange(const char *name) { nvtxRangePushA(name); }
++  ~NvtxRange() { nvtxRangePop(); }
++};
++
+ c10::optional<std::vector<torch::Tensor>>
+ as_optional_vec(c10::optional<torch::Tensor> &t) {
+   if (t.has_value()) {
+@@ -343,6 +349,7 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+       int sm_margin,
+       const AllGatherOption &opt,
+       c10::optional<UnifiedGemmHParams> const &hparams) {
++    NvtxRange nvtx_e2e("ISSUE6_END_TO_END");
+     FLUX_CHECK(
+ #if TORCH_SUPPORT_FP8
+         inputs_shard.scalar_type() == at::ScalarType::Float8_e5m2 ||
+@@ -386,6 +393,10 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+     }
+
+     cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
++    bool bench_compute_only = get_int_from_env("FLUX_MOE_AG_BENCH_COMPUTE_ONLY", 0) != 0;
++    bool bench_comm_only = get_int_from_env("FLUX_MOE_AG_BENCH_COMM_ONLY", 0) != 0;
++    FLUX_CHECK(!(bench_compute_only && bench_comm_only))
++        << "compute-only and comm-only benchmark modes are mutually exclusive";
+
+     // Step 1: get op. and prepare op buffers
+     auto meta = this->get_gemm_meta(fast_accum);
+@@ -404,9 +415,31 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+     bool is_s8_gemm = is_s8_torch_dtype(inputs_shard.scalar_type());
+     FLUX_CHECK(!is_s8_gemm) << "not support INT8 MOE AG+Scatter yet";
+
+-    CUDA_CHECK(cudaEventRecord(this->ready_event, stream));
+-    CUDA_CHECK(cudaStreamWaitEvent(this->cp_stream, this->ready_event));
+-    ag_op.run(inputs_shard, c10::nullopt, opt, this->cp_stream);
++    if (!bench_compute_only) {
++      NvtxRange nvtx_comm("ISSUE6_COMM_AG_RUN");
++      CUDA_CHECK(cudaEventRecord(this->ready_event, stream));
++      CUDA_CHECK(cudaStreamWaitEvent(this->cp_stream, this->ready_event));
++      ag_op.run(inputs_shard, c10::nullopt, opt, this->cp_stream);
++      CUDA_CHECK(cudaEventRecord(this->all_gather_event, this->cp_stream));
++    } else {
++      FLUX_CHECK(allgather_output.has_value())
++          << "compute-only benchmark mode requires a pre-gathered input tensor";
++      CUDA_CHECK(cudaEventRecord(this->all_gather_event, stream));
++    }
++
++    if (bench_comm_only) {
++      NvtxRange nvtx_wait("ISSUE6_WAIT_SIGNAL_COMM_ONLY");
++      CUDA_CHECK(cudaStreamWaitEvent(stream, this->all_gather_event));
++      std::vector<torch::Tensor> outputs = outputs_buf.value_or([&]() {
++        std::vector<torch::Tensor> rets;
++        for (std::size_t i = 0; i < num_weights_group; ++i) {
++          rets.emplace_back(empty_with_uninitialized_data(
++              std::vector<int64_t>{scatter_index.numel(), N}, inputs_shard.options()));
++        }
++        return rets;
++      }());
++      return outputs;
++    }
+
+     // Step 3: helper kernels. for preparing gather_index & sort tokens & outputs
+     int topk = this->topk;
+@@ -431,38 +464,41 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+         empty_with_uninitialized_data(std::vector<int64_t>{ep_nexperts * world_size}, opt_i32d);
+     torch::Tensor sorted_splits_cumsum =
+         empty_with_uninitialized_data(std::vector<int64_t>{ep_nexperts * world_size}, opt_i32d);
+-    calc_gather_index_impl(
+-        nexperts,
+-        ntokens,
+-        topk,
+-        ep_start,
+-        ep_start + ep_nexperts,
+-        splits_gpu.data_ptr<int32_t>(),
+-        scatter_index.data_ptr<int32_t>(),
+-        gather_index.data_ptr<int32_t>(),
+-        M_this_ep_holder.data_ptr<int>(),
+-        stream);
+-
+-    AGScatterSortOpArgumentsV2 moe_sort_args = {
+-        rank,
+-        world_size,
+-        ntokens,
+-        ep_nexperts,
+-        splits_gpu.data_ptr<int32_t>() + ep_start,
+-        gather_index.data_ptr<int32_t>(),
+-        sorted_splits.data_ptr<int32_t>(),
+-        sorted_splits_cumsum.data_ptr<int32_t>(),
+-        sorted_scatter_index.data_ptr<int32_t>(),
+-        sorted_gather_index.data_ptr<int32_t>(),
+-    };
+-    ag_scatter_sort_impl_v2(moe_sort_args, stream);
++    {
++      NvtxRange nvtx_scatter("ISSUE6_SCATTER_PREP");
++      calc_gather_index_impl(
++          nexperts,
++          ntokens,
++          topk,
++          ep_start,
++          ep_start + ep_nexperts,
++          splits_gpu.data_ptr<int32_t>(),
++          scatter_index.data_ptr<int32_t>(),
++          gather_index.data_ptr<int32_t>(),
++          M_this_ep_holder.data_ptr<int>(),
++          stream);
++
++      AGScatterSortOpArgumentsV2 moe_sort_args = {
++          rank,
++          world_size,
++          ntokens,
++          ep_nexperts,
++          splits_gpu.data_ptr<int32_t>() + ep_start,
++          gather_index.data_ptr<int32_t>(),
++          sorted_splits.data_ptr<int32_t>(),
++          sorted_splits_cumsum.data_ptr<int32_t>(),
++          sorted_scatter_index.data_ptr<int32_t>(),
++          sorted_gather_index.data_ptr<int32_t>(),
++      };
++      ag_scatter_sort_impl_v2(moe_sort_args, stream);
+
+-    sort_scatter_index_to_per_expert(
+-        sorted_scatter_index.data_ptr<int>(),
+-        splits_gpu.data_ptr<int>(),
+-        ep_start,
+-        ep_nexperts,
+-        stream);
++      sort_scatter_index_to_per_expert(
++          sorted_scatter_index.data_ptr<int>(),
++          splits_gpu.data_ptr<int>(),
++          ep_start,
++          ep_nexperts,
++          stream);
++    }
+
+     int M_this_ep = scatter_index.numel();  // for EP=1, M_this_ep is always M_full
+     if (ep_nexperts != nexperts) {
+@@ -476,7 +512,19 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+         torch::TensorOptions(torch::kInt8).device(torch::kCUDA));
+     // Step 4: prepare GEMM args
+     torch::Tensor barrier = ag_op.local_barrier_buffer();
+-    torch::Tensor input_buffer = ag_op.local_input_buffer().slice(0, 0, ntokens);
++    torch::Tensor input_buffer = bench_compute_only ? allgather_output.value()
++                                                    : ag_op.local_input_buffer().slice(0, 0, ntokens);
++    if (bench_compute_only) {
++      CHECK_INPUT(input_buffer, this->input_dtype);
++      CHECK_2D(input_buffer, ntokens, K);
++      for (int sid = 0; sid < world_size; ++sid) {
++        CU_CHECK(CUStreamWriteValue(
++            (CUstream)stream,
++            (CUdeviceptr)(barrier.data_ptr<int32_t>() + sid),
++            1,
++            CU_STREAM_WRITE_VALUE_DEFAULT));
++      }
++    }
+
+     // shapes check
+     std::vector<torch::Tensor> outputs = outputs_buf.value_or([&]() {
+@@ -522,17 +570,24 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+           output_scales.has_value() ? output_scales->at(gid).data_ptr<float>() : nullptr;
+     }
+
+-    CUDA_CHECK(cudaStreamWaitEvent(stream, ag_op.get_local_prepare_event()));
++    if (!bench_compute_only) {
++      NvtxRange nvtx_wait("ISSUE6_WAIT_SIGNAL_LOCAL_PREPARE");
++      CUDA_CHECK(cudaStreamWaitEvent(stream, ag_op.get_local_prepare_event()));
++    }
+     if (M_this_ep > 0) {
+       int64_t workspace_size = op->get_workspace_size(args);
+       lazy_init_buffer_tensor(&this->workspace_buffer, workspace_size);
+
+       // Step 5: launch GEMM
++      NvtxRange nvtx_gemm("ISSUE6_GROUPED_GEMM");
+       op->run(args, workspace_size ? this->workspace_buffer.data_ptr() : nullptr, stream);
+     }
+-    CUDA_CHECK(cudaStreamWaitEvent(stream, this->all_gather_event));
++    {
++      NvtxRange nvtx_wait("ISSUE6_WAIT_SIGNAL_ALL_GATHER");
++      CUDA_CHECK(cudaStreamWaitEvent(stream, this->all_gather_event));
++    }
+
+-    if (allgather_output.has_value()) {
++    if (allgather_output.has_value() && !bench_compute_only) {
+       CHECK_INPUT(allgather_output.value(), this->input_dtype);
+       CHECK_2D(allgather_output.value(), ntokens, K);
+       CUDA_CHECK(cudaMemcpyAsync(
+diff --git a/src/moe_gather_rs/CMakeLists.txt b/src/moe_gather_rs/CMakeLists.txt
+index 869331c..d793ab0 100644
+--- a/src/moe_gather_rs/CMakeLists.txt
++++ b/src/moe_gather_rs/CMakeLists.txt
+@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.17)
+
+ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/registers")
+ execute_process(
+-  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_moe_gather_rs "--dir=./registers" "--archs=${CUDAARCHS}" "--sm_cores=${SM_CORES}"
++  COMMAND ${FLUX_GENERATOR_BINARY_DIR}/gen_moe_gather_rs "--dir=./registers" "--archs=${GENERATOR_CUDAARCHS}" "--sm_cores=${SM_CORES}"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+   COMMAND_ERROR_IS_FATAL ANY
+   COMMAND_ECHO STDOUT
+diff --git a/src/pybind/ths_op.cc b/src/pybind/ths_op.cc
+index 34663ba..7cb5985 100644
+--- a/src/pybind/ths_op.cc
++++ b/src/pybind/ths_op.cc
+@@ -83,6 +83,7 @@ init_profiling_context(py::module &m) {
+       .def("get_all_prof_results", &ProfilingContext::get_all_prof_results)
+       .def("get_latest_prof_result", &ProfilingContext::get_latest_prof_result)
+       .def("get_latest_record", &ProfilingContext::get_latest_record)
++      .def("get_latest_record_at", &ProfilingContext::get_latest_record_at)
+       .def("get_all_records", &ProfilingContext::get_all_records);
+ }
+
+diff --git a/src/ths_op/ths_op.cc b/src/ths_op/ths_op.cc
+index f8d7362..80a9270 100644
+--- a/src/ths_op/ths_op.cc
++++ b/src/ths_op/ths_op.cc
+@@ -291,6 +291,24 @@ ProfilingContext::get_latest_record() const {
+   return PyTuningRecord(meta, rt_conf, top_hparams.begin()->second);
+ }
+
++PyTuningRecord
++ProfilingContext::get_latest_record_at(int top_index) const {
++  FLUX_CHECK(top_index >= 0) << "top_index must be non-negative";
++  FLUX_CHECK(latest_key_ptr != nullptr) << "no latest prof results found";
++  auto key = *latest_key_ptr;
++  auto iter = prof_results.find(key);
++  FLUX_CHECK(iter != prof_results.end())
++      << "key not found: (" << key.first << ", " << key.second << ")";
++  auto [meta, rt_conf] = key;
++  auto const &top_hparams = iter->second;
++  FLUX_CHECK(top_index < static_cast<int>(top_hparams.size()))
++      << "top_index " << top_index << " is out of range for " << top_hparams.size()
++      << " tuning records";
++  auto hparams_iter = top_hparams.begin();
++  std::advance(hparams_iter, top_index);
++  return PyTuningRecord(meta, rt_conf, hparams_iter->second);
++}
++
+ void
+ ProfilingContext::add(
+     UnifiedGemmMeta const &meta,

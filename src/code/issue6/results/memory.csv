@@ -1,0 +1,4 @@
+method,peak_allocated_bytes,peak_reserved_bytes
+baseline,260061696,497025024
+optimized,260066304,497025024
+delta_optimized_minus_baseline,4608,0

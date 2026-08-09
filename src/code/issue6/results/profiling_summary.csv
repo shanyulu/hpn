@@ -1,0 +1,4 @@
+method,comm_active_ms_median,gemm_active_ms_median,scatter_prep_active_ms_median,comm_gemm_overlap_pct_median,comm_compute_overlap_pct_median,p2p_memcpy_count_median,source_sqlite
+baseline_measured_loop,2.069494,7.105644,0.298797,71.73365688388455,84.71785478170875,75.0,/root/tencent-hpn-issue6/artifacts/profiling/compact/baseline_measured_loop.sqlite
+optimized_sm32_measured_loop,2.0901775,6.334518,0.309422,69.69249914919007,82.52836691437372,75.0,/root/tencent-hpn-issue6/artifacts/profiling/compact/optimized_sm32_measured_loop.sqlite
+optimized_split2_sm32_measured_loop,1.9586225,6.1996075,0.3024395,71.23588320551391,82.00127731875882,150.0,/root/tencent-hpn-issue6/artifacts/profiling/compact/optimized_split2_sm32_measured_loop.sqlite
