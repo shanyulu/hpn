@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "classification": "cross_configuration_numerical_sensitivity",
+  "not_a_same_configuration_nondeterminism_claim": true,
+  "ring_same_configuration": {
+    "source": "results/20260809_023244_reproduce_cross_algo/20260809_023245_cross_algo_Ring/summary.json",
+    "comparison_count": 20,
+    "divergent_comparison_count": 0,
+    "input_hashes_consistent": true,
+    "max_ordered_ulp": 0
+  },
+  "tree_same_configuration": {
+    "source": "results/20260809_023244_reproduce_cross_algo/20260809_023303_cross_algo_Tree/summary.json",
+    "comparison_count": 20,
+    "divergent_comparison_count": 0,
+    "input_hashes_consistent": true,
+    "max_ordered_ulp": 0
+  },
+  "ring_vs_tree_cross_configuration": {
+    "source": "results/20260809_023244_reproduce_cross_algo/ring_vs_tree_compare/cross_compare_summary.json",
+    "comparison_count": 20,
+    "divergent_comparison_count": 20,
+    "input_hashes_consistent": true,
+    "max_abs_error": 4.0,
+    "max_rel_error": 0.0008580020492087777,
+    "max_ordered_ulp": 7416,
+    "first_difference": {
+      "rank": 0,
+      "call_index": 0,
+      "first_differing_element": 0,
+      "changed_elements": 40615,
+      "first_value_ring": -30750.00390625,
+      "first_value_tree": -30750.005859375
+    }
+  },
+  "interpretation": "Ring and Tree were each same-configuration reproducible in this case, while Ring-vs-Tree outputs differed for identical inputs because the reduction path changed."
+}

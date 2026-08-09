@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-09",
+  "workspace": "/root/tencent-hpn-issue4",
+  "hpn_commit": "fcb16fe5a2942da749543b0e206707c7f3faba54",
+  "nccl_source_commit": "5067397c2676d5aed50042fc39e5c8ee96eb0027",
+  "nccl_tests_commit": "717b68318278e93f371d8ffb46b076069d7c7851",
+  "driver": "580.76.05",
+  "nvidia_smi_cuda": "13.0",
+  "cuda_toolkit": "/usr/local/cuda-12.8/bin/nvcc 12.8.93",
+  "python": "/root/miniconda3/bin/python3 3.12.3",
+  "pytorch": "2.8.0+cu128",
+  "pytorch_cuda": "12.8",
+  "pytorch_nccl": "2.27.3",
+  "system_nccl": "2.25.1-1+cuda12.8",
+  "nccl_source_version": "2.30.7",
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "bus_id": "00000000:38:00.0",
+      "compute_capability": "12.0",
+      "memory_mib_nvidia_smi": 97887,
+      "memory_bytes_torch": 101974081536
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "bus_id": "00000000:49:00.0",
+      "compute_capability": "12.0",
+      "memory_mib_nvidia_smi": 97887,
+      "memory_bytes_torch": 101974081536
+    },
+    {
+      "index": 2,
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "bus_id": "00000000:5A:00.0",
+      "compute_capability": "12.0",
+      "memory_mib_nvidia_smi": 97887,
+      "memory_bytes_torch": 101974081536
+    },
+    {
+      "index": 3,
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "bus_id": "00000000:98:00.0",
+      "compute_capability": "12.0",
+      "memory_mib_nvidia_smi": 97887,
+      "memory_bytes_torch": 101974081536
+    }
+  ],
+  "topology_summary": {
+    "gpu0_to_gpu1": "NODE",
+    "gpu0_to_gpu2": "NODE",
+    "gpu0_to_gpu3": "SYS",
+    "gpu1_to_gpu2": "NODE",
+    "gpu1_to_gpu3": "SYS",
+    "gpu2_to_gpu3": "SYS",
+    "gpu0_cpu_affinity": "0-51,104-155",
+    "gpu1_cpu_affinity": "0-51,104-155",
+    "gpu2_cpu_affinity": "0-51,104-155",
+    "gpu3_cpu_affinity": "52-103,156-207",
+    "gpu0_gpu1_gpu2_numa": 0,
+    "gpu3_numa": 1,
+    "nvlink_or_nvswitch_detected": false,
+    "nvidia_smi_p2p_read_write_all_pairs": true,
+    "torch_can_device_access_peer_all_cross_pairs": true,
+    "nccl_nvls_channels": 0,
+    "nccl_nvls_message": "NVLS multicast support is not available"
+  },
+  "scope_limit": "Findings apply only to this 4 x RTX PRO 6000 Blackwell PCIe single-node topology and recorded software stack."
+}

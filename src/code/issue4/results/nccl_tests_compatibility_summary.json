@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-09",
+  "hardware": "4 x NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "cuda_toolkit_for_build": "/usr/local/cuda-12.8/bin/nvcc 12.8.93",
+  "system_nccl_build": {
+    "nccl_tests_dir": "20260809_025749_nccl_tests_perf",
+    "nccl_tests_version": "2.19.7",
+    "headers_version_code": 22501,
+    "library_version_code": 22501,
+    "library_version": "2.25.1",
+    "all_reduce_command": "nccl-tests/build/all_reduce_perf -b 1K -e 128M -f 64 -g 4 -n 20 -w 5",
+    "reduce_scatter_command": "nccl-tests/build/reduce_scatter_perf -b 1K -e 128M -f 64 -g 4 -n 20 -w 5",
+    "status": "failed_on_blackwell",
+    "failure_evidence": [
+      "Test NCCL failure common.cu:619 'unhandled cuda error (run with NCCL_DEBUG=INFO for details) / '",
+      "Test failure all_reduce.cu:574",
+      "Test failure reduce_scatter.cu:98"
+    ]
+  },
+  "pytorch_wheel_nccl_build": {
+    "nccl_tests_dir": "20260809_030054_nccl_tests_perf_torch_nccl",
+    "nccl_home": "/root/miniconda3/lib/python3.12/site-packages/nvidia/nccl",
+    "nccl_tests_version": "2.19.7",
+    "headers_version_code": 22703,
+    "library_version_code": 22703,
+    "library_version": "2.27.3",
+    "status": "success",
+    "all_reduce_default_size_csv": "20260809_030054_nccl_tests_perf_torch_nccl/all_reduce_default_full_sizes.csv",
+    "reduce_scatter_default_size_csv": "20260809_030054_nccl_tests_perf_torch_nccl/reduce_scatter_default_full_sizes.csv",
+    "all_reduce_avg_bus_bandwidth_gbs": [11.5626, 27.2493],
+    "reduce_scatter_avg_bus_bandwidth_gbs": [10.9933, 26.3813]
+  },
+  "notes": [
+    "Raw nccl-tests .log files remain on the experiment host but are ignored by results/.gitignore to keep the PR compact.",
+    "Python forensic experiments used PyTorch NCCL 2.27.3, not the system NCCL 2.25.1 runtime."
+  ]
+}

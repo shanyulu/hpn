@@ -1,0 +1,3 @@
+collective,algo_default,algo_ring,algo_tree,proto_default,proto_simple,proto_ll,proto_ll128,evidence_file
+all_reduce,pass,pass,pass,pass,pass,pass,pass,results/algorithm_protocol_matrix.csv
+reduce_scatter,pass,pass,unsupported,pass,pass,pass,pass,results/algorithm_protocol_matrix.csv

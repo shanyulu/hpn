@@ -1,0 +1,11 @@
+collective,size_bytes,size_label,algorithm,protocol,dtype,runs,calls,ranks,status,verdict,comparison_count,divergent_comparison_count,max_abs_error,max_rel_error,max_ordered_ulp,evidence_file
+all_reduce,1024,1KiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023426_matrix_all_reduce_float32_1KiB_default_default/summary.json
+all_reduce,65536,64KiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023503_matrix_all_reduce_float32_64KiB_default_default/summary.json
+all_reduce,1048576,1MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023540_matrix_all_reduce_float32_1MiB_default_default/summary.json
+all_reduce,16777216,16MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023617_matrix_all_reduce_float32_16MiB_default_default/summary.json
+all_reduce,134217728,128MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023659_matrix_all_reduce_float32_128MiB_default_default/summary.json
+reduce_scatter,1024,1KiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023825_matrix_reduce_scatter_float32_1KiB_default_default/summary.json
+reduce_scatter,65536,64KiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023901_matrix_reduce_scatter_float32_64KiB_default_default/summary.json
+reduce_scatter,1048576,1MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_023938_matrix_reduce_scatter_float32_1MiB_default_default/summary.json
+reduce_scatter,16777216,16MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_024016_matrix_reduce_scatter_float32_16MiB_default_default/summary.json
+reduce_scatter,134217728,128MiB,default,default,float32,5,3,4,ok,bitwise_identical,48,0,0.0,0.0,0,results/20260809_023425_default_size_sweep/20260809_024109_matrix_reduce_scatter_float32_128MiB_default_default/summary.json

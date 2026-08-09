@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "source": "results/20260809_022722_injection_1ulp_smoke/summary.json",
+  "classification": "controlled_detector_self_test",
+  "not_a_nccl_nondeterminism_claim": true,
+  "config": {
+    "algo": "default",
+    "calls": 3,
+    "collective": "all_reduce",
+    "dtype": "float32",
+    "injection": {
+      "bit": null,
+      "call": 1,
+      "element": 5,
+      "rank": 0,
+      "run": 1,
+      "ulp": 1
+    },
+    "nccl_debug": "INFO",
+    "nccl_debug_subsys": "INIT,GRAPH,COLL",
+    "nproc_per_node": 1,
+    "proto": "default",
+    "runs": 2,
+    "sanitize_nccl_env": true,
+    "seed": 202604,
+    "size_bytes": 1024
+  },
+  "comparison_count": 3,
+  "divergent_comparison_count": 1,
+  "input_hashes_consistent": true,
+  "detected": {
+    "run_a": 0,
+    "run_b": 1,
+    "call_index": 1,
+    "rank": 0,
+    "first_differing_element": 5,
+    "first_differing_byte": 20,
+    "first_differing_bit": 160,
+    "changed_elements": 1,
+    "changed_bytes": 1,
+    "changed_bits": 4,
+    "max_abs_error": 2.2737367544323206e-13,
+    "max_rel_error": 6.314110717805154e-08,
+    "max_ordered_ulp": 1,
+    "first_value_a": -3.601040361900232e-06,
+    "first_value_b": -3.6010405892739072e-06
+  },
+  "interpretation": "The comparator localized the injected 1-ULP perturbation at the configured run/call/rank/element."
+}

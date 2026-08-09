@@ -1,0 +1,16 @@
+# Keep timestamped raw experiment directories on the experiment host, but keep
+# the PR surface limited to canonical reviewer-facing evidence files.
+*
+!.gitignore
+!RESULTS_INDEX.md
+!environment_summary.json
+!same_config_matrix.csv
+!size_sweep.csv
+!algorithm_protocol_matrix.csv
+!controlled_injection.json
+!ring_vs_tree.json
+!nccl_tests_performance.csv
+!nccl_tests_compatibility_summary.json
+!nccl_trace_selection_summary.json
+!figures/
+!figures/*.svg

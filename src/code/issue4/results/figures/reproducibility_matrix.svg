@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="250" viewBox="0 0 980 250">
+<rect width="100%" height="100%" fill="white"/>
+<text x="30" y="32" font-size="18" font-weight="700" text-anchor="start" fill="#1f2937" font-family="Arial, sans-serif">Same-configuration reproducibility matrix</text>
+<text x="30" y="55" font-size="12" font-weight="400" text-anchor="start" fill="#4b5563" font-family="Arial, sans-serif">4× RTX PRO 6000 Blackwell, FP32, 1 MiB algorithm/protocol matrix</text>
+<text x="30" y="116" font-size="13" font-weight="700" text-anchor="start" fill="#1f2937" font-family="Arial, sans-serif">Collective</text>
+<text x="232.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Algo</text>
+<text x="232.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">default</text>
+<text x="337.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Algo</text>
+<text x="337.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Ring</text>
+<text x="442.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Algo</text>
+<text x="442.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Tree</text>
+<text x="547.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Proto</text>
+<text x="547.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">default</text>
+<text x="652.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Proto</text>
+<text x="652.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Simple</text>
+<text x="757.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Proto</text>
+<text x="757.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">LL</text>
+<text x="862.5" y="69" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">Proto</text>
+<text x="862.5" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif">LL128</text>
+<rect x="20" y="85" width="940" height="48" fill="#f9fafb" stroke="#e5e7eb"/>
+<text x="30" y="116" font-size="13" font-weight="700" text-anchor="start" fill="#1f2937" font-family="Arial, sans-serif">all_reduce</text>
+<rect x="188" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="232.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="293" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="337.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="398" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="442.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="503" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="547.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="608" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="652.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="713" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="757.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="818" y="94" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="862.5" y="115" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="20" y="133" width="940" height="48" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="30" y="164" font-size="13" font-weight="700" text-anchor="start" fill="#1f2937" font-family="Arial, sans-serif">reduce_scatter</text>
+<rect x="188" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="232.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="293" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="337.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="398" y="142" width="89" height="30" rx="6" fill="#f59e0b" opacity="0.14" stroke="#f59e0b"/>
+<text x="442.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#f59e0b" font-family="Arial, sans-serif">unsupported</text>
+<rect x="503" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="547.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="608" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="652.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="713" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="757.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<rect x="818" y="142" width="89" height="30" rx="6" fill="#16a34a" opacity="0.14" stroke="#16a34a"/>
+<text x="862.5" y="163" font-size="13" font-weight="700" text-anchor="middle" fill="#16a34a" font-family="Arial, sans-serif">✓</text>
+<text x="30" y="220" font-size="12" font-weight="400" text-anchor="start" fill="#4b5563" font-family="Arial, sans-serif">✓ = 0 divergent comparisons. unsupported = NCCL reported no supported algorithm/protocol for this configuration.</text>
+</svg>
