@@ -14,14 +14,21 @@ Baseline uses the original Flux V2 AGScatter hparams for BF16/BF16 grouped GEMM:
 
 ## Optimization
 
-The implementation adds targeted V2 hparams for the official MoE shape:
+The first optimization adds targeted V2 hparams for the official MoE shape:
 
 - Original: `tile_shape=(128,128,32)`
 - Candidate: `tile_shape=(64,128,32)`
 - Candidate: `tile_shape=(32,128,32)`
 - Candidate: `tile_shape=(16,128,32)`
 
-The final tuned candidate is `tile_shape=(32,128,32)`, `warp_shape=(32,64,32)`, StreamK, raster along N, with `sm_margin=32`. This reduces the consumer tile granularity from a tile that spans the full 64-row expert to a 32-row tile that aligns closer to the approximately 16-row source-rank chunks in the official uniform routing case.
+The tuned consumer is `tile_shape=(32,128,32)`, `warp_shape=(32,64,32)`, StreamK, raster along N. This reduces consumer tile granularity from a tile that spans the full 64-row expert to a 32-row tile that aligns closer to the approximately 16-row source-rank chunks in the official uniform routing case.
+
+The final overlap optimization addresses the dispatch-prep gap before grouped GEMM. For the official `topk=1`, `EP=1` path, it fuses gather-index inversion and AG scatter sort into one GPU kernel, keeps `sorted_scatter_index` in EP-local output coordinates, and points grouped-GEMM output pointers at the full EP output base. This removes the separate per-expert scatter-index normalization kernel. The final path keeps the same ring1d P2P communication count and uses `sm_margin=0`.
+
+The resulting pre-GEMM dispatch path is reduced from four kernels to two kernels:
+
+- Original/B4: gather-index inversion, AG scatter sort, scatter-index normalization, workspace preparation
+- Final/B8: fused topk1 EP-local dispatch sort, workspace preparation
 
 ## Overlap Methodology
 
@@ -36,7 +43,23 @@ Tideal = max(Tc, Tm)
 Derived overlap = (Tserial - Tf) / (Tserial - Tideal)
 ```
 
-Profiler overlap is calculated from Nsight Systems SQLite exports inside the `ISSUE6_MEASURED_LOOP` NVTX range. Communication activity is P2P memcpy on this PCIe host. Compute-side activity is reported two ways: grouped GEMM only, and grouped GEMM plus scatter/workspace prep.
+Profiler overlap is calculated from Nsight Systems SQLite exports inside the `ISSUE6_MEASURED_LOOP` NVTX range. Communication activity is P2P memcpy on this PCIe host. The primary profiler metric is grouped GEMM only:
+
+```text
+comm_gemm_overlap_pct = overlap(COMM, GROUPED_GEMM) / active(COMM) * 100
+```
+
+The auxiliary compute-side metric is reported separately:
+
+```text
+comm_compute_side_overlap_pct = overlap(COMM, SCATTER_PREP + GROUPED_GEMM) / active(COMM) * 100
+```
+
+`results/profiling_iterations.csv` stores per-rank, per-iteration rows. `results/profiling_summary.csv` stores medians and distribution summaries. CPU NVTX range duration is not treated as CUDA active time.
+
+## Final Validation
+
+Final B0 and B8 fused latency was measured across five independent launches with 20 warmup iterations and 100 measured iterations per launch. Main latency and throughput numbers use the median of per-launch medians. The final B8 median is 0.321904 ms, versus B0 0.341744 ms and the previous B4 PR state 0.323568 ms.
 
 ## Correctness
 

@@ -3,10 +3,13 @@
 <text x="380.0" y="24" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700">Issue6 official shape latency (ms)</text>
 <line x1="120" y1="270" x2="740" y2="270" stroke="#333"/>
 <line x1="120" y1="40" x2="120" y2="270" stroke="#333"/>
-<rect x="181.0" y="70.0" width="183.0" height="200.0" fill="#2F6B9A"/>
-<text x="272.5" y="64.0" text-anchor="middle" font-family="Arial" font-size="12">0.342</text>
-<text x="272.5" y="292" text-anchor="middle" font-family="Arial" font-size="12">B0 Original</text>
-<rect x="486.0" y="80.9" width="183.0" height="189.1" fill="#2F6B9A"/>
-<text x="577.5" y="74.9" text-anchor="middle" font-family="Arial" font-size="12">0.324</text>
-<text x="577.5" y="292" text-anchor="middle" font-family="Arial" font-size="12">B4 Final</text>
+<rect x="160.7" y="70.0" width="122.0" height="200.0" fill="#2F6B9A"/>
+<text x="221.7" y="64.0" text-anchor="middle" font-family="Arial" font-size="12">0.342</text>
+<text x="221.7" y="292" text-anchor="middle" font-family="Arial" font-size="12">B0 Original (5-run)</text>
+<rect x="364.0" y="80.6" width="122.0" height="189.4" fill="#2F6B9A"/>
+<text x="425.0" y="74.6" text-anchor="middle" font-family="Arial" font-size="12">0.324</text>
+<text x="425.0" y="292" text-anchor="middle" font-family="Arial" font-size="12">B4 Tile32 current</text>
+<rect x="567.3" y="81.6" width="122.0" height="188.4" fill="#2F6B9A"/>
+<text x="628.3" y="75.6" text-anchor="middle" font-family="Arial" font-size="12">0.322</text>
+<text x="628.3" y="292" text-anchor="middle" font-family="Arial" font-size="12">B8 Fused-prep final (5-run)</text>
 </svg>

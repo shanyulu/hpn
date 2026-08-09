@@ -1,4 +1,6 @@
 method,peak_allocated_bytes,peak_reserved_bytes
-baseline,260061696,497025024
-optimized,260066304,497025024
-delta_optimized_minus_baseline,4608,0
+B0 Original,260061184,497025024
+B4 Tile32 current,260066304,497025024
+B8 Fused-prep final,260064768,497025024
+delta_B8_minus_B0,3584,0
+delta_B8_minus_B4,-1536,0

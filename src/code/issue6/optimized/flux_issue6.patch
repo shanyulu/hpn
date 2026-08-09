@@ -62,6 +62,18 @@ index 2feb4ef..8a378b3 100755
      if [ $BDIST_WHEEL == "ON" ]; then
          MAX_JOBS=${JOBS} python3 setup.py bdist_wheel
      fi
+diff --git a/include/flux/args/moe_ag_scatter.h b/include/flux/args/moe_ag_scatter.h
+index c45e0b5..001d6bc 100644
+--- a/include/flux/args/moe_ag_scatter.h
++++ b/include/flux/args/moe_ag_scatter.h
+@@ -58,6 +58,7 @@ struct GemmGroupedV2AGScatterArguments {
+   int *accum_per_rank_ptr;  // on device memory expected
+   int tile_size_m, tile_size_n;
+   int *barrier_ptr;
++  bool scatter_D_is_ep_index = false;
+   // fill inside op. only Op has the information
+   float alpha = 1.f;
+   float beta = 0.f;
 diff --git a/include/flux/ths_op/ths_op.h b/include/flux/ths_op/ths_op.h
 index 9893cff..53c9c79 100644
 --- a/include/flux/ths_op/ths_op.h
@@ -289,8 +301,138 @@ index bc721f4..0a2945d 100644
    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
    COMMAND_ERROR_IS_FATAL ANY
    COMMAND_ECHO STDOUT
+diff --git a/src/moe_ag_scatter/sort_util.cu b/src/moe_ag_scatter/sort_util.cu
+index 8c774db..f8e298d 100644
+--- a/src/moe_ag_scatter/sort_util.cu
++++ b/src/moe_ag_scatter/sort_util.cu
+@@ -517,6 +517,102 @@ ag_scatter_sort_impl_v2(AGScatterSortOpArgumentsV2 const &args, cudaStream_t str
+   cutlass::device_kernel<Op><<<grid, block, smem_size, stream>>>(params);
+ }
+
++template <int MaxTpRanks>
++__global__ void
++ag_scatter_sort_topk1_ep_fused_kernel(
++    int32_t ntokens,
++    int32_t nexperts_ep,
++    int32_t world_size,
++    int32_t const *splits_ep,
++    int32_t const *scatter_index,
++    int32_t *sorted_splits,
++    int32_t *sorted_splits_cumsum,
++    int32_t *sorted_scatter_index,
++    int32_t *sorted_gather_index) {
++  __shared__ int32_t rows_counter[MaxTpRanks];
++  __shared__ int32_t rank_offset[MaxTpRanks];
++  __shared__ int32_t row_start;
++  __shared__ int32_t row_end;
++
++  int const expert_id = blockIdx.x;
++  int const ntokens_per_rank = ntokens / world_size;
++
++  for (int r = threadIdx.x; r < world_size; r += blockDim.x) {
++    rows_counter[r] = 0;
++  }
++
++  if (threadIdx.x == 0) {
++    int offset = 0;
++    for (int e = 0; e < expert_id; ++e) {
++      offset += splits_ep[e];
++    }
++    row_start = offset;
++    row_end = offset + splits_ep[expert_id];
++  }
++  __syncthreads();
++
++  for (int source_row = threadIdx.x; source_row < ntokens; source_row += blockDim.x) {
++    int dst_row = scatter_index[source_row];
++    if (dst_row >= row_start && dst_row < row_end) {
++      int source_rank = source_row / ntokens_per_rank;
++      atomicAdd(&rows_counter[source_rank], 1);
++    }
++  }
++  __syncthreads();
++
++  if (threadIdx.x == 0) {
++    int accum = 0;
++    for (int r = 0; r < world_size; ++r) {
++      int count = rows_counter[r];
++      sorted_splits[expert_id * world_size + r] = count;
++      accum += count;
++      sorted_splits_cumsum[expert_id * world_size + r] = accum;
++      rank_offset[r] = row_start + accum - count;
++      rows_counter[r] = 0;
++    }
++  }
++  __syncthreads();
++
++  for (int source_row = threadIdx.x; source_row < ntokens; source_row += blockDim.x) {
++    int dst_row = scatter_index[source_row];
++    if (dst_row >= row_start && dst_row < row_end) {
++      int source_rank = source_row / ntokens_per_rank;
++      int local_idx = atomicAdd(&rows_counter[source_rank], 1);
++      int sorted_row = rank_offset[source_rank] + local_idx;
++      sorted_scatter_index[sorted_row] = dst_row;
++      sorted_gather_index[sorted_row] = source_row;
++    }
++  }
++}
++
++void
++ag_scatter_sort_topk1_ep_fused_impl(
++    int32_t ntokens,
++    int32_t nexperts_ep,
++    int32_t world_size,
++    int32_t const *splits_ep,
++    int32_t const *scatter_index,
++    int32_t *sorted_splits,
++    int32_t *sorted_splits_cumsum,
++    int32_t *sorted_scatter_index,
++    int32_t *sorted_gather_index,
++    cudaStream_t stream) {
++  constexpr int MaxTpRanks = 64;
++  FLUX_CHECK_LE(world_size, MaxTpRanks);
++  FLUX_CHECK_EQ(ntokens % world_size, 0);
++  ag_scatter_sort_topk1_ep_fused_kernel<MaxTpRanks><<<nexperts_ep, 256, 0, stream>>>(
++      ntokens,
++      nexperts_ep,
++      world_size,
++      splits_ep,
++      scatter_index,
++      sorted_splits,
++      sorted_splits_cumsum,
++      sorted_scatter_index,
++      sorted_gather_index);
++  CUDA_CHECK(cudaGetLastError());
++}
++
+ std::vector<ProblemSchedule>
+ get_sorted_problem_schedule(
+     std::vector<int32_t> const &sorted_splits_cpu,
+diff --git a/src/moe_ag_scatter/sort_util.h b/src/moe_ag_scatter/sort_util.h
+index 80e0589..37a3c9a 100644
+--- a/src/moe_ag_scatter/sort_util.h
++++ b/src/moe_ag_scatter/sort_util.h
+@@ -93,6 +93,18 @@ struct AGScatterSortOpArgumentsV2 {
+ };
+ void ag_scatter_sort_impl_v2(AGScatterSortOpArgumentsV2 const &args, cudaStream_t stream);
+
++void ag_scatter_sort_topk1_ep_fused_impl(
++    int32_t ntokens,
++    int32_t nexperts_ep,
++    int32_t world_size,
++    int32_t const *splits_ep,
++    int32_t const *scatter_index,
++    int32_t *sorted_splits,
++    int32_t *sorted_splits_cumsum,
++    int32_t *sorted_scatter_index,
++    int32_t *sorted_gather_index,
++    cudaStream_t stream);
++
+ void sort_scatter_index_to_per_expert(
+     int *sorted_scatter_index,
+     int *splits_gpu,
 diff --git a/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc b/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
-index 4b80333..3d194e7 100644
+index 4b80333..0ff1c07 100644
 --- a/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
 +++ b/src/moe_ag_scatter/ths_op/gemm_grouped_v2_ag_scatter.cc
 @@ -44,6 +44,7 @@
@@ -332,7 +474,7 @@ index 4b80333..3d194e7 100644
 
      // Step 1: get op. and prepare op buffers
      auto meta = this->get_gemm_meta(fast_accum);
-@@ -404,9 +415,31 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+@@ -404,15 +415,40 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
      bool is_s8_gemm = is_s8_torch_dtype(inputs_shard.scalar_type());
      FLUX_CHECK(!is_s8_gemm) << "not support INT8 MOE AG+Scatter yet";
 
@@ -367,7 +509,16 @@ index 4b80333..3d194e7 100644
 
      // Step 3: helper kernels. for preparing gather_index & sort tokens & outputs
      int topk = this->topk;
-@@ -431,38 +464,41 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+     int ep_nexperts = this->ep_nexperts;
+     int nexperts = this->nexperts;
+     int ep_start = this->ep_start;
++    bool issue6_fused_topk1_sort =
++        get_int_from_env("FLUX_MOE_AG_FUSED_TOPK1_SORT", 1) != 0 && topk == 1 &&
++        ep_nexperts == nexperts;
+     // should be M_this_ep, but never mind gather_index takes little memory
+     auto opt_i32d = torch::TensorOptions(torch::kCUDA)
+                         .dtype(at::ScalarType::Int)
+@@ -431,38 +467,56 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
          empty_with_uninitialized_data(std::vector<int64_t>{ep_nexperts * world_size}, opt_i32d);
      torch::Tensor sorted_splits_cumsum =
          empty_with_uninitialized_data(std::vector<int64_t>{ep_nexperts * world_size}, opt_i32d);
@@ -398,31 +549,44 @@ index 4b80333..3d194e7 100644
 -    ag_scatter_sort_impl_v2(moe_sort_args, stream);
 +    {
 +      NvtxRange nvtx_scatter("ISSUE6_SCATTER_PREP");
-+      calc_gather_index_impl(
-+          nexperts,
-+          ntokens,
-+          topk,
-+          ep_start,
-+          ep_start + ep_nexperts,
-+          splits_gpu.data_ptr<int32_t>(),
-+          scatter_index.data_ptr<int32_t>(),
-+          gather_index.data_ptr<int32_t>(),
-+          M_this_ep_holder.data_ptr<int>(),
-+          stream);
-+
-+      AGScatterSortOpArgumentsV2 moe_sort_args = {
-+          rank,
-+          world_size,
-+          ntokens,
-+          ep_nexperts,
-+          splits_gpu.data_ptr<int32_t>() + ep_start,
-+          gather_index.data_ptr<int32_t>(),
-+          sorted_splits.data_ptr<int32_t>(),
-+          sorted_splits_cumsum.data_ptr<int32_t>(),
-+          sorted_scatter_index.data_ptr<int32_t>(),
-+          sorted_gather_index.data_ptr<int32_t>(),
-+      };
-+      ag_scatter_sort_impl_v2(moe_sort_args, stream);
++      if (issue6_fused_topk1_sort) {
++        ag_scatter_sort_topk1_ep_fused_impl(
++            ntokens,
++            ep_nexperts,
++            world_size,
++            splits_gpu.data_ptr<int32_t>() + ep_start,
++            scatter_index.data_ptr<int32_t>(),
++            sorted_splits.data_ptr<int32_t>(),
++            sorted_splits_cumsum.data_ptr<int32_t>(),
++            sorted_scatter_index.data_ptr<int32_t>(),
++            sorted_gather_index.data_ptr<int32_t>(),
++            stream);
++      } else {
++        calc_gather_index_impl(
++            nexperts,
++            ntokens,
++            topk,
++            ep_start,
++            ep_start + ep_nexperts,
++            splits_gpu.data_ptr<int32_t>(),
++            scatter_index.data_ptr<int32_t>(),
++            gather_index.data_ptr<int32_t>(),
++            M_this_ep_holder.data_ptr<int>(),
++            stream);
++        AGScatterSortOpArgumentsV2 moe_sort_args = {
++            rank,
++            world_size,
++            ntokens,
++            ep_nexperts,
++            splits_gpu.data_ptr<int32_t>() + ep_start,
++            gather_index.data_ptr<int32_t>(),
++            sorted_splits.data_ptr<int32_t>(),
++            sorted_splits_cumsum.data_ptr<int32_t>(),
++            sorted_scatter_index.data_ptr<int32_t>(),
++            sorted_gather_index.data_ptr<int32_t>(),
++        };
++        ag_scatter_sort_impl_v2(moe_sort_args, stream);
++      }
 
 -    sort_scatter_index_to_per_expert(
 -        sorted_scatter_index.data_ptr<int>(),
@@ -430,17 +594,19 @@ index 4b80333..3d194e7 100644
 -        ep_start,
 -        ep_nexperts,
 -        stream);
-+      sort_scatter_index_to_per_expert(
-+          sorted_scatter_index.data_ptr<int>(),
-+          splits_gpu.data_ptr<int>(),
-+          ep_start,
-+          ep_nexperts,
-+          stream);
++      if (!issue6_fused_topk1_sort) {
++        sort_scatter_index_to_per_expert(
++            sorted_scatter_index.data_ptr<int>(),
++            splits_gpu.data_ptr<int>(),
++            ep_start,
++            ep_nexperts,
++            stream);
++      }
 +    }
 
      int M_this_ep = scatter_index.numel();  // for EP=1, M_this_ep is always M_full
      if (ep_nexperts != nexperts) {
-@@ -476,7 +512,19 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+@@ -476,7 +530,19 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
          torch::TensorOptions(torch::kInt8).device(torch::kCUDA));
      // Step 4: prepare GEMM args
      torch::Tensor barrier = ag_op.local_barrier_buffer();
@@ -461,7 +627,17 @@ index 4b80333..3d194e7 100644
 
      // shapes check
      std::vector<torch::Tensor> outputs = outputs_buf.value_or([&]() {
-@@ -522,17 +570,24 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+@@ -514,7 +580,8 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
+         .accum_per_rank_ptr = sorted_splits_cumsum.data_ptr<int32_t>(),
+         .tile_size_m = tile_M,
+         .tile_size_n = tile_N,
+-        .barrier_ptr = barrier.data_ptr<int32_t>()};
++        .barrier_ptr = barrier.data_ptr<int32_t>(),
++        .scatter_D_is_ep_index = issue6_fused_topk1_sort};
+     for (int gid = 0; gid < num_weights_group; gid++) {
+       args.weight[gid] = weights[gid].data_ptr();
+       args.output[gid] = outputs[gid].data_ptr();
+@@ -522,17 +589,24 @@ class GemmGroupedV2AGScatterOp::GemmGroupedV2AGScatterOpImpl {
            output_scales.has_value() ? output_scales->at(gid).data_ptr<float>() : nullptr;
      }
 
@@ -489,6 +665,21 @@ index 4b80333..3d194e7 100644
        CHECK_INPUT(allgather_output.value(), this->input_dtype);
        CHECK_2D(allgather_output.value(), ntokens, K);
        CUDA_CHECK(cudaMemcpyAsync(
+diff --git a/src/moe_ag_scatter/workspace_util.cu b/src/moe_ag_scatter/workspace_util.cu
+index 5cb0d12..6fa3cd0 100644
+--- a/src/moe_ag_scatter/workspace_util.cu
++++ b/src/moe_ag_scatter/workspace_util.cu
+@@ -219,7 +219,9 @@ prepare_workspace_kernel(
+     ptr_A[i] = args.input;
+     ptr_B[i] = ptr_with_offset(args.weight[gid], eid * N * K * input_elem_size);
+     ptr_C[i] = nullptr;
+-    ptr_D[i] = ptr_with_offset(args.output[gid], M_acc * N * output_elem_size);
++    ptr_D[i] = args.scatter_D_is_ep_index
++                   ? args.output[gid]
++                   : ptr_with_offset(args.output[gid], M_acc * N * output_elem_size);
+     lda[i] = GemmLayoutA::packed({Mi, K}).stride(0);
+     ldb[i] = GemmLayoutB::packed({K, N}).stride(0);
+     ldc[i] = GemmLayoutC::packed({Mi, N}).stride(0);
 diff --git a/src/moe_gather_rs/CMakeLists.txt b/src/moe_gather_rs/CMakeLists.txt
 index 869331c..d793ab0 100644
 --- a/src/moe_gather_rs/CMakeLists.txt

@@ -77,11 +77,16 @@ def gather_object(torch_mod: Any, obj: Any, group: Any, world_size: int) -> list
     return gathered
 
 
-def set_bench_env(component: str) -> dict[str, str | None]:
-    keys = ["FLUX_MOE_AG_BENCH_COMPUTE_ONLY", "FLUX_MOE_AG_BENCH_COMM_ONLY"]
+def set_bench_env(component: str, variant: str) -> dict[str, str | None]:
+    keys = [
+        "FLUX_MOE_AG_BENCH_COMPUTE_ONLY",
+        "FLUX_MOE_AG_BENCH_COMM_ONLY",
+        "FLUX_MOE_AG_FUSED_TOPK1_SORT",
+    ]
     old = {k: os.environ.get(k) for k in keys}
     for k in keys:
         os.environ.pop(k, None)
+    os.environ["FLUX_MOE_AG_FUSED_TOPK1_SORT"] = "1" if variant == "optimized" else "0"
     if component == "compute_only":
         os.environ["FLUX_MOE_AG_BENCH_COMPUTE_ONLY"] = "1"
     elif component == "comm_only":
@@ -182,6 +187,7 @@ def main() -> int:
     ag_option.mode = RING_MODE_MAP[args.ring_mode]
     ag_option.use_cuda_core_ag = args.use_cuda_core_ag
     ag_option.use_cuda_core_local = False
+    os.environ["FLUX_MOE_AG_FUSED_TOPK1_SORT"] = "1" if args.variant == "optimized" else "0"
 
     tuning_info: dict[str, Any] = {"enabled": args.variant == "optimized"}
     if args.variant == "optimized":
@@ -273,7 +279,7 @@ def main() -> int:
 
     tp_group.barrier()
     torch.cuda.synchronize()
-    old_env = set_bench_env(args.component)
+    old_env = set_bench_env(args.component, args.variant)
     nvtx_loop_pushed = False
     try:
         if args.nvtx_loop_label:

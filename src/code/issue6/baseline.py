@@ -14,7 +14,7 @@ def main() -> int:
     parser.add_argument("--flux-root", type=Path, default=Path("/root/tencent-hpn-issue6/src/flux"))
     parser.add_argument("--output-dir", type=Path, default=Path("/root/tencent-hpn-issue6/artifacts/issue6_repro"))
     parser.add_argument("--variant", choices=["original", "optimized"], default="optimized")
-    parser.add_argument("--sm-margin", type=int, default=32)
+    parser.add_argument("--sm-margin", type=int, default=0)
     parser.add_argument("--iters", type=int, default=100)
     parser.add_argument("--warmup-iters", type=int, default=20)
     args = parser.parse_args()
